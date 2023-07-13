@@ -43,6 +43,10 @@ class SegmentationMetric(object):
         elif isinstance(preds, (list, tuple)):
             for (pred, label) in zip(preds, labels):
                 evaluate_worker(self, pred, label)
+        pix_acc_per_class = self.batch_pix_accuracy_per_class(preds, labels)
+        if self.total_pix_acc_per_class.device != pix_acc_per_class.device:
+        self.total_pix_acc_per_class = self.total_pix_acc_per_class.to(pix_acc_per_class.device)
+        self.total_pix_acc_per_class += pix_acc_per_class
 
     def get(self):
         """Gets the current evaluation result.
@@ -55,7 +59,8 @@ class SegmentationMetric(object):
         pixAcc = 1.0 * self.total_correct / (2.220446049250313e-16 + self.total_label)  # remove np.spacing(1)
         IoU = 1.0 * self.total_inter / (2.220446049250313e-16 + self.total_union)
         mIoU = IoU.mean().item()
-        return pixAcc, mIoU
+        avg_pix_acc_per_class = self.total_pix_acc_per_class / self.total_label
+        return pixAcc, mIoU, avg_pix_acc_per_class
 
     def reset(self):
         """Resets the internal evaluation result to initial state."""
@@ -63,7 +68,35 @@ class SegmentationMetric(object):
         self.total_union = torch.zeros(self.nclass)
         self.total_correct = 0
         self.total_label = 0
+        self.total_pix_acc_per_class = torch.zeros(self.nclass)
+               
+    '''
+    MS add
+    '''
+    def batch_pix_accuracy_per_class(self, output, target):
+        """Compute pixel accuracy for each class"""
+        # Assuming output is the predicted segmentation map as a tensor of shape (N, C, H, W)
+        # where N is the number of samples, C is the number of classes, H and W are height and width
+        # And target is the ground truth segmentation map as a tensor of shape (N, H, W)
 
+        predict = torch.argmax(output, dim=1)  # Get the predicted classes (shape: N, H, W)
+
+        # Initialize tensor to hold pixel accuracy for each class
+        pix_acc_per_class = torch.zeros(self.nclass, device=output.device)
+
+        # Compute pixel accuracy for each class
+        for c in range(self.nclass):
+            # Create masks for the current class in the predictions and the ground truth
+            pred_mask = (predict == c)
+            gt_mask = (target == c)
+
+            # Compute pixel accuracy for this class
+            pixel_correct = torch.sum(pred_mask & gt_mask).float()  # True positives
+            pixel_labeled = torch.sum(gt_mask).float()  # True positives + False negatives
+
+            pix_acc_per_class[c] = pixel_correct / (pixel_labeled + 1e-10)  # Add a small constant to avoid division by zero
+
+        return pix_acc_per_class
 
 def batch_pix_accuracy(output, target):
     """PixAcc"""
