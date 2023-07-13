@@ -236,8 +236,10 @@ class Trainer(object):
             with torch.no_grad():
                 outputs = model(image)
             self.metric.update(outputs[0], target)
-            pixAcc, mIoU = self.metric.get()
+            pixAcc, mIoU, pix_acc_per_class = self.metric.get()
             logger.info("Sample: {:d}, Validation pixAcc: {:.3f}, mIoU: {:.3f}".format(i + 1, pixAcc, mIoU))
+            str_list = ', '.join([f'{num:.43}' for num in pix_acc_per_class])
+            logger.info("Sample: {:d}, pixAcc_per_class:",str_list)
 
         new_pred = (pixAcc + mIoU) / 2
         if new_pred > self.best_pred:
